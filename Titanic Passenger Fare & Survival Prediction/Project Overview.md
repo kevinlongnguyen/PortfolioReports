@@ -1,4 +1,5 @@
 ## Project Overview
+### Project
 This will be a semester-long individual project. You will primarily be working on one data set throughout the semester.
 
 We recommend teams of 3 students, while teams sizes of 1 or 2 are also acceptable. The team size will be taken under consideration when evaluating the quality of the project, meaning that a three-person team is expected to accomplish more than a one-person team would. Students should submit their final reports in groups. You are free to team up by yourself.

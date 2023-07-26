@@ -1,0 +1,134 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+library(survival) # For survival analysis
+library(ggplot2) # For data visualization
+library(ggfortify) # Visualize survival curves
+library(gridExtra) # Arrange multiple plots
+library(MASS) # For stepAIC model selection
+library(SurvRegCensCov) # For parametric survival models
+```
+
+# Data Preprocessing
+```{r}
+# Load pbc dataset
+data(pbc) 
+
+# Create binary event indicator
+pbc$status = ifelse(pbc$status == 2, 1, 0) 
+
+# Convert time to years  
+pbc$time <- pbc$time/365.25
+
+# Convert variables to factors
+pbc$edema <- as.factor(pbc$edema)
+pbc$trt <- as.factor(pbc$trt)
+pbc$sex <- as.factor(pbc$sex)
+pbc$ascites <- as.factor(pbc$ascites)
+pbc$hepato <- as.factor(pbc$hepato)
+pbc$spiders <- as.factor(pbc$spiders)
+pbc$stage <- as.factor(pbc$stage)
+```
+
+# Kaplan-Meier Curves
+```{r}
+# Estimate Kaplan-Meier curves for variables
+km_fit2 <- survfit(Surv(time, status) ~ sex, data = pbc, type = "kaplan-meier")
+g1 <- autoplot(km_fit2) + labs(fill = "Sex", color = "Sex", x = "Time (Years)", 
+                               y = "Survival")
+
+km_fit3 <- survfit(Surv(time, status) ~ ascites, data = pbc, type = "kaplan-meier")
+g2 <- autoplot(km_fit3) + labs(fill = "Ascites", color = "Ascites", x = "Time (Years)", 
+                               y = "Survival")
+
+km_fit4 <- survfit(Surv(time, status) ~ hepato, data = pbc, type = "kaplan-meier")
+g3 <- autoplot(km_fit4) + labs(fill = "Hepato", color = "Hepato", x = "Time (Years)", 
+                               y = "Survival")
+
+km_fit5 <- survfit(Surv(time, status) ~ spiders, data = pbc, type = "kaplan-meier")
+g4 <- autoplot(km_fit5) + labs(fill = "Spiders", color = "Spiders", x = "Time (Years)", 
+                               y = "Survival") 
+
+km_fit6 <- survfit(Surv(time, status) ~ edema, data = pbc, type = "kaplan-meier")
+g5 <- autoplot(km_fit6) + labs(fill = "Edema", color = "Edema", x = "Time (Years)", 
+                               y = "Survival")
+
+km_fit16 <- survfit(Surv(time, status) ~ stage, data = pbc, type = "kaplan-meier")  
+g6 <- autoplot(km_fit16) + labs(fill = "Stage", color = "Stage", x = "Time (Years)", 
+                                y = "Survival")
+
+km_fit17 <- survfit(Surv(time, status) ~ trt, data = pbc, type = "kaplan-meier")
+g7 <- autoplot(km_fit17) + labs(fill = "Treatment", color = "Treatment", x = "Time (Years)", 
+                                y = "Survival")
+
+# Arrange multiple KM curves
+grid.arrange(g1, g2, g3, g4, g5, g6, g7, nrow = 4, ncol = 2)
+```
+
+# Cox Proportional Hazards Models
+```{r}
+# Fit Cox PH model
+pbc2 <- na.omit(pbc) # Remove missing data
+coxph(Surv(time, status) ~ age + edema + bili + albumin + copper + ast + protime + stage, 
+      data = pbc2)
+
+# Fit full Cox PH model
+model <- coxph(data = pbc2, Surv(time, status) ~ trt + age + sex + ascites + hepato + spiders 
+               + edema + bili + chol + albumin + copper + alk.phos + ast + trig + platelet 
+               + protime + stage + age:chol + trt:age)
+
+# Backwards selection
+step <- stepAIC(model, direction = "backward")
+```
+
+# Model Diagnostics
+```{r}
+# Check model residuals
+mr <- residuals(step, type = "martingale")  
+
+# Plot residuals against covariates  
+par(mfrow = c(3,2)) 
+plot(pbc2$age, mr, xlab = "Age (Years)", ylab = "Martingale Residuals")
+plot(pbc2$bili, mr, xlab = "Bilirubin (mg/dl)", ylab = "Martingale Residuals")
+plot(pbc2$albumin, mr, xlab = "Albumin (gm/dl)", ylab = "Martingale Residuals") 
+plot(pbc2$copper, mr, xlab = "Copper (ug/day)", ylab = "Martingale Residuals")
+plot(pbc2$ast, mr, xlab = "SGOT (U/ml)", ylab = "Martingale Residuals")
+plot(pbc2$protime, mr, xlab = "Prothrombin Time (seconds)", ylab = "Martingale Residuals")
+```
+
+# Weibull Model
+```{r}
+# Fit Weibull AFT model on pbc data
+ret <- survreg(Surv(time, status) ~ trt + age + sex + ascites + hepato + 
+                spiders + edema + bili + chol + albumin + copper + 
+                alk.phos + ast + trig + platelet + protime + stage + 
+                age:chol + trt:age,  
+               dist = "weibull", data = pbc2)
+
+# Exponentiate coefficients to get acceleration factors  
+# Values > 1 indicate shorter survival times
+acceleration_factors <- exp(ret$coefficients) 
+
+# Rescale coefficients by estimated shape parameter
+# Allows coefficients to be interpreted as log hazard ratios 
+shape <- 0.606
+haz_ratios <- exp(-ret$coefficients/shape)
+```
+
+# Model Validation
+```{r}
+# Compute Cox-Snell residuals
+CS <- pbc2$status - residuals(step)  
+
+# Check cumulative hazard assumption
+plot(survfit(Surv(CS, pbc2$status) ~ 1, type = "flem"), fun = "cumhaz")
+```
